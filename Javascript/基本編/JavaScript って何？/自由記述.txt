@@ -1,0 +1,78 @@
+【メモ】
+
+★親の設定(プロトタイプ)を継承して、子のオブジェクトに設定することが可能。
+
+function parentObj() {};
+parentObj.prototype.width = 160;
+parentObj.prototype.height = 120;
+
+function childObj() {}
+childObj.prototype = Object.create(parentObj.prototype);
+console.log(childObj.prototype);
+
+==========
+
+★配列の個々の値を出力する際は、インデックスを指定する
+
+var arr = ["Red", "Green", "Blue"];
+console.log(arr);                     // => ["Red", "Green", "Blue"]
+console.log(arr[0]);                  // => "Red"
+console.log(arr[1]);                  // => "Green"
+console.log(arr[2]);                  // => "Blue"
+
+==========
+
+★ブロックの中にて有効な局所変数は、変数を定義する際に、『let』で定義する
+
+var a = 3;
+let b = 3;
+{
+  var a = 5;
+  let b = 5;
+}
+console.log(a);    // 5 (ブロック内で上書きされてしまう)
+console.log(b);    // 3 (ブロック内で上書きされない)
+
+==========
+
+★途中までJavascriptを見た雑感としては、個人的にPythonとShellの勉強をしていたので、
+Javascriptの文法(正規表現など)が理解しやすいという印象。
+　⇒変数定義の際に、型定義する辺りが、上記のスクリプト言語と違う印象
+
+==========
+
+★.catch() の後ろに .then() を加えることで、成功時にも、失敗時にも常に実行される Finally のような処理を追加することができます。
+
+function sample_finally() {
+    aFunc3(100).then((data) => {
+        console.log(data);
+        return aFunc3(data);
+    })
+    .then((data) => {
+        console.log(data);
+        return aFunc3(data);
+    })
+    .then((data) => {
+        console.log(data);
+    })
+    .catch((e) => {
+        console.log(e);
+    })
+    .then(() => {
+        console.log('*** Finally ***');
+    });
+}
+
+==========
+
+★以下の論理代入演算子は覚える
+
+xx ||= 5;    // xx || (a = 5); と同じ。xxが未設定など偽と判断される場合にxxに値を代入
+xx &&= 5;    // xx && (xx = 5); と同じ。xxが設定済など真と判断される場合にxxに値を代入
+xx ??= 5;    // xx ?? (xx = 5); と同じ。xxがnullかundefinedの時にxxに値を代入
+
+
+
+
+
+
