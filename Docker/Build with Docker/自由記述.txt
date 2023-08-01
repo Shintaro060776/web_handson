@@ -1,0 +1,123 @@
+【メモ】
+
+・Dockerfile 命令の順序は重要です。 Docker ビルドは、順序付けられた一連のビルド命令で構成されます。
+ Dockerfile 内の各命令は、大まかにイメージ レイヤーに変換されます。
+
+★Cached layers
+ビルドを実行すると、以前のビルドのレイヤーを再利用しようとする。以前のレイヤーが変更されていない場合、
+ビルダーはキャッシュから取得する。以前のレイヤーとそれに続くすべてのレイヤーを再ビルドする必要がある。
+
+★Update the instruction order
+DOCKERFILE内の命令の順序を変更することで、冗長性を回避できる。依存関係のダウンロードとインストールが
+行われるように、命令の順序を変更。ソースコードに変更を加えた場合でも、ビルダーはキャッシュを再利用できる。
+
+=================================
+
+ARG GO_VERSION=1.20: Dockerfileで使われる変数GO_VERSIONを定義しています。デフォルト値は1.20ですが、ビルド時に別の値を指定することも可能です。
+
+FROM golang:${GO_VERSION}-alpine AS base: golang:${GO_VERSION}-alpine（GO_VERSIONには上で定義した値が入ります）のDockerイメージをベースに新しいビルドステージbaseを作成します。
+
+WORKDIR /src: /srcディレクトリを作業ディレクトリとして指定します。このディレクトリは、この後のRUN, CMD, ENTRYPOINT, COPY及びADD命令の実行場所となります。
+
+RUN --mount=type=cache,target=/go/pkg/mod/ \ --mount=type=bind,source=go.sum,target=go.sum \ --mount=type=bind,source=go.mod,target=go.mod \ go mod download -x: マウントオプションを使ってキャッシュディレクトリとして/go/pkg/mod/を指定し、現在のディレクトリのgo.sumとgo.modをコンテナ内にバインドします。その上でgo mod download -xコマンドを実行します。これによりGoの依存関係がダウンロードされます。
+
+以下の行も同様のステージの定義となります。FROM base as build-client と FROM base as build-serverはそれぞれクライアントとサーバーのビルドステージを作ります。それぞれでGoのコードをビルドし、実行ファイルを出力します。
+
+そしてFROM scratch AS clientとFROM scratch AS serverではそれぞれのステージからビルドしたバイナリを新たなイメージにコピーします。scratchは空のイメージを表し、小さなイメージを作るために使用されます。ENTRYPOINT命令でそれぞれのバイナリがコンテナ起動時に実行されるように設定します。
+
+最後のFROM scratch AS binariesのステージでは、clientとserverのビルドステージから作られたバイナリをコピーしています。これにより、一つのイメージ内に複数のバイナリを含めることができます。
+
+=================================
+
+ARG GO_VERSION=1.20: Dockerfileで使われる変数GO_VERSIONを定義しています。デフォルト値は1.20ですが、ビルド時に別の値を指定することも可能です。
+
+FROM golang:${GO_VERSION}-alpine AS base: golang:${GO_VERSION}-alpine（GO_VERSIONには上で定義した値が入ります）のDockerイメージをベースに新しいビルドステージbaseを作成します。
+
+WORKDIR /src: /srcディレクトリを作業ディレクトリとして指定します。このディレクトリは、この後のRUN, CMD, ENTRYPOINT, COPY及びADD命令の実行場所となります。
+
+RUN --mount=type=cache,target=/go/pkg/mod/ \ --mount=type=bind,source=go.sum,target=go.sum \ --mount=type=bind,source=go.mod,target=go.mod \ go mod download -x: マウントオプションを使ってキャッシュディレクトリとして/go/pkg/mod/を指定し、現在のディレクトリのgo.sumとgo.modをコンテナ内にバインドします。その上でgo mod download -xコマンドを実行します。これによりGoの依存関係がダウンロードされます。
+
+FROM base as build-client: baseステージをベースに新しいビルドステージbuild-clientを作成します。
+
+RUN --mount=type=cache,target=/go/pkg/mod/ \ --mount=type=bind,target=. \ go build -o /bin/client ./cmd/client: キャッシュディレクトリとして/go/pkg/mod/を指定し、現在のディレクトリをコンテナ内にバインドします。その上でgo build -o /bin/client ./cmd/clientコマンドを実行します。これによりクライアントのGoコードがビルドされ、実行可能なバイナリが/bin/clientに出力されます。
+
+=================================
+
+FROM base as build-server: baseというビルドステージをベースに、新しいビルドステージbuild-serverを作成します。
+
+ARG APP_VERSION="0.0.0+unknown": Dockerfile内で使用する変数APP_VERSIONを定義し、そのデフォルト値を"0.0.0+unknown"に設定しています。
+
+RUN --mount=type=cache,target=/go/pkg/mod/ \ --mount=type=bind,target=. \ go build -ldflags "-X main.version=$APP_VERSION" -o /bin/server ./cmd/server: キャッシュディレクトリとして/go/pkg/mod/を指定し、現在のディレクトリをコンテナ内にバインドします。その上でgo build -ldflags "-X main.version=$APP_VERSION" -o /bin/server ./cmd/serverコマンドを実行します。これにより、サーバのGoコードがビルドされ、実行可能なバイナリが/bin/serverに出力されます。
+
+FROM scratch AS client: 何も含まないイメージ（scratch）をベースに、新しいビルドステージclientを作成します。
+
+COPY --from=build-client /bin/client /bin/: build-clientステージの/bin/clientを、新しいビルドステージclientの/bin/ディレクトリにコピーします。
+
+ENTRYPOINT [ "/bin/client" ]: コンテナが実行されるときのデフォルトのコマンドを/bin/clientに設定します。つまり、このコンテナが実行されると/bin/clientが自動的に実行されます。
+
+FROM scratch AS server: 何も含まないイメージ（scratch）をベースに、新しいビルドステージserverを作成します。
+
+COPY --from=build-server /bin/server /bin/: build-serverステージの/bin/serverを、新しいビルドステージserverの/bin/ディレクトリにコピーします。
+
+ENTRYPOINT [ "/bin/server" ]: コンテナが実行されるときのデフォルトのコマンドを/bin/serverに設定します。つまり、このコンテナが実行されると/bin/serverが自動的に実行されます。
+
+FROM scratch AS binaries: 何も含まないイメージ（scratch）をベースに、新しいビルドステージbinariesを作成します。
+
+COPY --from=build-client /bin/client /: build-clientステージの/bin/clientを、新しいビルドステージbinariesのルートディレクトリ(/)にコピーします。
+
+COPY --from=build-server /bin/server /: build-serverステージの/bin/serverを、新しいビルドステージbinariesのルートディレクトリ(/)にコピーします。これにより、clientとserverの両方の実行可能ファイルがbinariesステージに存在するようになります。
+
+=================================
+
+ARG GO_VERSION=1.20: Dockerfile内で使用する変数GO_VERSIONを定義し、そのデフォルト値を1.20に設定しています。この変数は、ビルド時に上書きすることが可能です。
+
+ARG GOLANGCI_LINT_VERSION=v1.52: Dockerfile内で使用する変数GOLANGCI_LINT_VERSIONを定義し、そのデフォルト値をv1.52に設定しています。この変数は、ビルド時に上書きすることが可能です。
+
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS base: プラットフォームを指定して、golangの$GO_VERSIONバージョンのAlpineイメージをベースに、baseという名前の新しいビルドステージを作成します。$BUILDPLATFORMは、ビルドを実行しているホストのプラットフォームを示します。
+
+WORKDIR /src: /srcディレクトリを作業ディレクトリ（コマンドが実行される場所）として設定します。
+
+RUN --mount=type=cache,target=/go/pkg/mod \ --mount=type=bind,source=go.mod,target=go.mod \ --mount=type=bind,source=go.sum,target=go.sum \ go mod download -x: キャッシュディレクトリとして/go/pkg/modを指定し、go.modとgo.sumをコンテナ内にバインドします。その上でgo mod download -xコマンドを実行します。これにより、プロジェクトの依存関係がダウンロードされます。
+
+FROM base AS build-client: baseというビルドステージをベースに、新しいビルドステージbuild-clientを作成します。
+
+ARG TARGETOS: Dockerfile内で使用する変数TARGETOSを定義します。この変数は、ビルド時に上書きすることが可能で、ビルド対象のOSを指定するのに使われます。
+
+ARG TARGETARCH: Dockerfile内で使用する変数TARGETARCHを定義します。この変数は、ビルド時に上書きすることが可能で、ビルド対象のアーキテクチャを指定するのに使われます。
+
+RUN --mount=type=cache,target=/go/pkg/mod \ --mount=type=bind,target=. \ GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/client ./cmd/client: キャッシュディレクトリとして/go/pkg/modを指定し、現在のディレクトリをコンテナ内にバインドします。その上でGOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/client ./cmd/clientコマンドを実行します。これにより、指定されたOSとアーキテクチャに対してクライアントのGoコードがビルドされ、実行可能なバイナリが/bin/clientに出力されます。
+
+
+=================================
+
+FROM base AS build-server: baseというビルドステージをベースに、新しいビルドステージbuild-serverを作成します。
+
+ARG TARGETOS: Dockerfile内で使用する変数TARGETOSを定義します。この変数は、ビルド時に上書きすることが可能で、ビルド対象のOSを指定するのに使われます。
+
+ARG TARGETARCH: Dockerfile内で使用する変数TARGETARCHを定義します。この変数は、ビルド時に上書きすることが可能で、ビルド対象のアーキテクチャを指定するのに使われます。
+
+RUN --mount=type=cache,target=/go/pkg/mod \ --mount=type=bind,target=. \ GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/server ./cmd/server: キャッシュディレクトリとして/go/pkg/modを指定し、現在のディレクトリをコンテナ内にバインドします。その上でGOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /bin/server ./cmd/serverコマンドを実行します。これにより、指定されたOSとアーキテクチャに対してサーバのGoコードがビルドされ、実行可能なバイナリが/bin/serverに出力されます。
+
+FROM scratch AS client: 空のイメージ(通常はバイナリの実行に必要な最小限のファイルのみを含む)をベースに、新しいイメージステージclientを作成します。
+
+COPY --from=build-client /bin/client /bin/: build-clientステージでビルドされた/bin/clientを新しいclientイメージの/bin/ディレクトリにコピーします。
+
+ENTRYPOINT [ "/bin/client" ]: イメージがコンテナとして実行された時に自動的に実行されるコマンドを設定します。ここでは、/bin/clientが設定されています。
+
+FROM scratch AS server: 同じく空のイメージをベースに、新しいイメージステージserverを作成します。
+
+COPY --from=build-server /bin/server /bin/: build-serverステージでビルドされた/bin/serverを新しいserverイメージの/bin/ディレクトリにコピーします。
+
+ENTRYPOINT [ "/bin/server" ]: イメージがコンテナとして実行された時に自動的に実行されるコマンドを設定します。ここでは、/bin/serverが設定されています。
+
+FROM scratch AS binaries: 同じく空のイメージをベースに、新しいイメージステージbinariesを作成します。
+
+COPY --from=build-client /bin/client /: build-clientステージでビルドされた/bin/clientを新しいbinariesイメージのルート(/)ディレクトリにコピーします。
+
+COPY --from=build-server /bin/server /: build-serverステージでビルドされた/bin/serverも新しいbinariesイメージのルート(/)ディレクトリにコピーします。
+
+FROM golangci/golangci-lint:${GOLANGCI_LINT_VERSION} as lint: ベースイメージとしてgolangci/golangci-lintの${GOLANGCI_LINT_VERSION}バージョンのイメージを使用して、新しいビルドステージlintを作成します。
+
+WORKDIR /test: /testディレクトリを作業ディレクトリ（コマンドが実行される場所）として設定します。
+
+RUN --mount=type=bind,target=. \ golangci-lint run: 現在のディレクトリをコンテナ内にバインドします。その上でgolangci-lint runコマンドを実行します。これにより、Goのコードに対して静的解析を行います。

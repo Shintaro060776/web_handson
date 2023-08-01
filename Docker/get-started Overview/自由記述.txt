@@ -1,0 +1,2 @@
+shintaro@DESKTOP-IIL2U5Q:/mnt/c/Users/User/getting-started/getting-started/app$ pwd
+/mnt/c/Users/User/getting-started/getting-started/app
