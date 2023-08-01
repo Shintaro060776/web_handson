@@ -11,3 +11,10 @@
 　⇒実際のエンタープライズレベルでの環境は、上記のように管理していると思われる為、ハンズオンでも同様にコードを、ファイル毎に分割
 
 ★Dockerでコンテナ(nginx)を構築して、ローカル(http://localhost:8080/)で検証
+
+★以下は、Gitの役に立つコマンド
+git remote set-url origin https://github.com/Shintaro060776/JavaScript-for-beginner.git
+
+git pull origin main
+
+git remote -v
