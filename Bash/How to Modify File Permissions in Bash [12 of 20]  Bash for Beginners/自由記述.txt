@@ -1,0 +1,9 @@
+ファイルの権限に関する説明
+
+r = read
+w = write
+x = execute
+
+r w x
+4 2 1
+
